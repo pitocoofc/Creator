@@ -1,19 +1,25 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
+import cors from 'cors'; // 1. Importa o CORS
 
 const app = express();
+
+// 2. Libera o CORS para aceitar requisições de qualquer HTML/Navegador
+app.use(cors());
 app.use(express.json());
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_REPO = process.env.GITHUB_REPO; // ex: "seu_usuario/seu_repositorio"
+const GITHUB_REPO = process.env.GITHUB_REPO;
 
-// Fila em memória RAM para acumular os cadastros
 let filaCadastros = [];
 let processando = false;
 
-// ----------------------------------------------------
-// ROTA: POST /cadastro
-// ----------------------------------------------------
+// Rota de teste simples para acessar direto pelo navegador
+app.get('/', (req, res) => {
+    return res.status(200).send("API de Cadastro ativa e operante!");
+});
+
+// Rota POST do Cadastro
 app.post('/cadastro', async (req, res) => {
     const { usuario, senha } = req.body;
 
@@ -24,16 +30,14 @@ app.post('/cadastro', async (req, res) => {
     const usuarioFormatado = usuario.toLowerCase().trim();
     const hashSenha = await bcrypt.hash(senha, 10);
 
-    // Guarda a conta formatada na memória RAM
     filaCadastros.push({
         usuario: usuarioFormatado,
         senha: hashSenha,
         criadoEm: new Date().toISOString()
     });
 
-    console.log(`[RAM] Novo cadastro retido na fila: ${usuarioFormatado} (Total na RAM: ${filaCadastros.length})`);
+    console.log(`[RAM] Novo cadastro retido na fila: ${usuarioFormatado} (Total: ${filaCadastros.length})`);
 
-    // Se atingir 3 contas e não estiver processando outro lote, dispara o envio
     if (filaCadastros.length >= 3 && !processando) {
         processarLoteNovosArquivos();
     }
@@ -44,16 +48,11 @@ app.post('/cadastro', async (req, res) => {
     });
 });
 
-// ----------------------------------------------------
-// FUNÇÃO DE PROCESSAMENTO DO LOTE (RAM -> GITHUB)
-// ----------------------------------------------------
 async function processarLoteNovosArquivos() {
     if (filaCadastros.length === 0 || processando) return;
     processando = true;
 
-    // Retira do buffer da RAM
     const lote = filaCadastros.splice(0, filaCadastros.length);
-    console.log(`[LOTE] Processando ${lote.length} conta(s) para gravação no GitHub...`);
 
     for (const conta of lote) {
         try {
@@ -65,7 +64,7 @@ async function processarLoteNovosArquivos() {
                 content: Buffer.from(JSON.stringify(conta, null, 2)).toString('base64')
             };
 
-            const response = await fetch(url, {
+            await fetch(url, {
                 method: 'PUT',
                 headers: {
                     "Authorization": `Bearer ${GITHUB_TOKEN}`,
@@ -75,12 +74,6 @@ async function processarLoteNovosArquivos() {
                 },
                 body: JSON.stringify(payload)
             });
-
-            if (response.ok) {
-                console.log(`[OK] Arquivo ${fileName} criado no GitHub!`);
-            } else {
-                console.error(`[ERRO] Falha ao criar ${fileName}:`, await response.text());
-            }
         } catch (err) {
             console.error(`[ERRO CRÍTICO] ao salvar ${conta.usuario}:`, err);
         }
@@ -89,13 +82,11 @@ async function processarLoteNovosArquivos() {
     processando = false;
 }
 
-// Timer de segurança: a cada 20s limpa o buffer da RAM mesmo se tiver menos de 3 contas
 setInterval(() => {
     if (filaCadastros.length > 0) {
-        console.log("[TIMER 20s] Descarregando cadastros acumulados...");
         processarLoteNovosArquivos();
     }
 }, 20000);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor exclusivo de Cadastro rodando na porta ${PORT}`));
+app.listen(PORT, () => console.log(`Rodando na porta ${PORT}`));
