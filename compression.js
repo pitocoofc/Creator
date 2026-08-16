@@ -243,4 +243,4 @@ function decompressFull(buffer) {
   return decompressLZ77(Buffer.from(lz77Data));
 }
 
-module.exports = { compressFull, decompressFull };
+export { compressFull, decompressFull };
